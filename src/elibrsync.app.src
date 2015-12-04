@@ -1,0 +1,12 @@
+{application, elibrsync,
+ [
+  {description, "Erlang bindings to librsync."},
+  {vsn, "0.1"},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {modules, [elibrsync]},
+  {env, []}
+ ]}.
