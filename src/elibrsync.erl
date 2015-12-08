@@ -1,6 +1,6 @@
 -module(elibrsync).
 
--export([signature/0]).
+-export([signature_begin/1]).
 
 -on_load(init/0).
 
@@ -20,5 +20,5 @@ init() ->
               end,
     erlang:load_nif(filename:join(PrivDir, elibrsync), 0).
 
-signature() ->
+signature_begin(_BlockLen) ->
     ?NIF_STUB.
