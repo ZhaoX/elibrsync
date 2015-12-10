@@ -3,25 +3,149 @@
 #include "erl_nif.h"
 #include "librsync.h"
 
-//#define MD4_LEN 16
+static ERL_NIF_TERM atom_ok;
+static ERL_NIF_TERM atom_error;
 
-//*******************************************************************************
-//Function rs_mdfour_file exists in librsync.h, but it has no implementation.
-//*******************************************************************************
-//static ERL_NIF_TERM md4_file_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-//    char file_name[4096];
-//    FILE *file;
-//    ERL_NIF_TERM ret;
-//
-//    if(!enif_get_string(env, argv[0], file_name, sizeof(file_name), ERL_NIF_LATIN1)) {
-//        return enif_make_badarg(env);
-//    } 
-//
-//    file = fopen(file_name, "r");
-//    rs_mdfour_file(file, (char*)enif_make_new_binary(env, MD4_LEN, &ret));
-//  
-//    return ret;
-//}
+static ERL_NIF_TERM signature_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    char basis_file_name[1024], sig_file_name[1024];
+    FILE *basis_file, *sig_file;
+    int block_len;
+    size_t strong_len = 0;
+    rs_magic_number sig_magic = RS_BLAKE2_SIG_MAGIC;
+    rs_result result;
+    char const *result_str;
+
+    ERL_NIF_TERM ret_term;
+
+    if(!enif_get_string(env, argv[0], basis_file_name, sizeof(basis_file_name), ERL_NIF_LATIN1)) {
+        return enif_make_badarg(env);
+    } 
+
+    if(!enif_get_string(env, argv[1], sig_file_name, sizeof(sig_file_name), ERL_NIF_LATIN1)) {
+        return enif_make_badarg(env);
+    }
+
+    if(!enif_get_int(env, argv[2], &block_len)) {
+        return enif_make_badarg(env);
+    }
+
+    basis_file = fopen(basis_file_name, "rb");
+    sig_file = fopen(sig_file_name, "wb");
+
+    result = rs_sig_file(basis_file, sig_file, (size_t)block_len, strong_len,
+                         sig_magic, NULL); 
+
+    fclose(basis_file);
+    fclose(sig_file);
+
+    result_str = rs_strerror(result);
+
+    if(result == RS_DONE) {
+        ret_term = enif_make_tuple2(env, atom_ok, 
+                                    enif_make_string(env, result_str, ERL_NIF_LATIN1)); 
+    } else {
+        ret_term = enif_make_tuple2(env, atom_error, 
+                                    enif_make_string(env, result_str, ERL_NIF_LATIN1)); 
+    }    
+
+    return ret_term;
+}
+
+static ERL_NIF_TERM delta_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    char sig_file_name[1024], new_file_name[1024], delta_file_name[1024];
+    FILE *sig_file, *new_file, *delta_file;
+    rs_signature_t  *signature;
+    rs_result result;
+    char const *result_str;
+
+    ERL_NIF_TERM ret_term;
+
+    if(!enif_get_string(env, argv[0], sig_file_name, sizeof(sig_file_name), ERL_NIF_LATIN1)) {
+        return enif_make_badarg(env);
+    } 
+
+    if(!enif_get_string(env, argv[1], new_file_name, sizeof(new_file_name), ERL_NIF_LATIN1)) {
+        return enif_make_badarg(env);
+    }
+
+    if(!enif_get_string(env, argv[2], delta_file_name, sizeof(delta_file_name), ERL_NIF_LATIN1)) {
+        return enif_make_badarg(env);
+    }
+
+    sig_file = fopen(sig_file_name, "rb");
+    new_file = fopen(new_file_name, "rb");
+    delta_file = fopen(delta_file_name, "wb");
+
+    result = rs_loadsig_file(sig_file, &signature, NULL);
+    if (result != RS_DONE)
+        return enif_make_tuple2(env, atom_error, enif_make_string(env, rs_strerror(result), ERL_NIF_LATIN1)); 
+
+    if ((result = rs_build_hash_table(signature)) != RS_DONE)
+        return enif_make_tuple2(env, atom_error, enif_make_string(env, rs_strerror(result), ERL_NIF_LATIN1));
+
+    result = rs_delta_file(signature, new_file, delta_file, NULL); 
+
+    fclose(sig_file);
+    fclose(new_file);
+    fclose(delta_file);
+
+    result_str = rs_strerror(result);
+
+    if(result == RS_DONE) {
+        ret_term = enif_make_tuple2(env, atom_ok, 
+                                    enif_make_string(env, result_str, ERL_NIF_LATIN1)); 
+    } else {
+        ret_term = enif_make_tuple2(env, atom_error, 
+                                    enif_make_string(env, result_str, ERL_NIF_LATIN1)); 
+    }    
+
+    return ret_term;
+
+}
+
+static ERL_NIF_TERM patch_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    char basis_file_name[1024], delta_file_name[1024], new_file_name[1024];
+    FILE *basis_file, *delta_file, *new_file;
+    rs_result result;
+    char const *result_str;
+
+    ERL_NIF_TERM ret_term;
+
+    if(!enif_get_string(env, argv[0], basis_file_name, sizeof(basis_file_name), ERL_NIF_LATIN1)) {
+        return enif_make_badarg(env);
+    } 
+
+    if(!enif_get_string(env, argv[1], delta_file_name, sizeof(delta_file_name), ERL_NIF_LATIN1)) {
+        return enif_make_badarg(env);
+    }
+
+    if(!enif_get_string(env, argv[2], new_file_name, sizeof(new_file_name), ERL_NIF_LATIN1)) {
+        return enif_make_badarg(env);
+    }
+
+    basis_file = fopen(basis_file_name, "rb");
+    delta_file = fopen(delta_file_name, "rb");
+    new_file = fopen(new_file_name, "wb");
+
+    result = rs_patch_file(basis_file, delta_file, new_file, NULL);
+
+    fclose(basis_file);
+    fclose(delta_file);
+    fclose(new_file);
+
+    result_str = rs_strerror(result);
+
+    if(result == RS_DONE) {
+        ret_term = enif_make_tuple2(env, atom_ok, 
+                                    enif_make_string(env, result_str, ERL_NIF_LATIN1)); 
+    } else {
+        ret_term = enif_make_tuple2(env, atom_error, 
+                                    enif_make_string(env, result_str, ERL_NIF_LATIN1)); 
+    }    
+
+    return ret_term;
+}
+
 
 static ERL_NIF_TERM signature_begin_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     int new_block_len;
@@ -34,12 +158,21 @@ static ERL_NIF_TERM signature_begin_nif(ErlNifEnv* env, int argc, const ERL_NIF_
 
     rs_job_t *job = rs_sig_begin((size_t)new_block_len, strong_sum_len, sig_magic);
 
-    return enif_make_long(env, (long)job);
+    return enif_make_uint64(env, (ErlNifUInt64)job);
 }
 
 static ErlNifFunc nif_funcs[] = {
-//    {"md4_file", 0, md4_file_nif},
+    {"signature", 3, signature_nif},
+    {"delta", 3, delta_nif},
+    {"patch", 3, patch_nif},
     {"signature_begin", 1, signature_begin_nif}
 };
 
-ERL_NIF_INIT(elibrsync, nif_funcs, NULL, NULL, NULL, NULL)
+static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)
+{
+  atom_ok = enif_make_atom(env, "ok");
+  atom_error = enif_make_atom(env, "error");
+  return 0;
+}
+
+ERL_NIF_INIT(elibrsync, nif_funcs, &on_load, NULL, NULL, NULL);
