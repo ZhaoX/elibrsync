@@ -4,7 +4,9 @@
     signature/3,
     delta/3,
     patch/3,
-    signature_begin/1
+    signature_begin/1,
+    signature_iterate/2,
+    signature_end/2
 ]).
 
 -on_load(init/0).
@@ -37,4 +39,18 @@ patch(_BasisFileName, _DeltaFileName, _NewFileName) ->
     ?NIF_STUB.  
 
 signature_begin(_BlockLen) ->
+    ?NIF_STUB.
+
+signature_iterate(Context, Data) ->
+    signature_iterate(Context, Data, 0).
+
+signature_iterate(_Context, _Data, _Eof) ->
+    ?NIF_STUB.
+
+signature_end(Context, Data) ->
+    {ok, Ret} = signature_iterate(Context, Data, 1),
+    {ok, _} = signature_end(Context),
+    {ok, Ret}.
+
+signature_end(_Context) ->
     ?NIF_STUB.
