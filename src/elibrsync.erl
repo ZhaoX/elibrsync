@@ -4,6 +4,7 @@
     signature/3,
     delta/3,
     patch/3,
+    signature_begin/0,
     signature_begin/1,
     signature_iterate/2,
     signature_end/2,
@@ -41,6 +42,9 @@ delta(_SigFileName, _NewFileName, _DeltaFileName) ->
 
 patch(_BasisFileName, _DeltaFileName, _NewFileName) ->
     ?NIF_STUB.  
+
+signature_begin() ->
+    signature_begin(?DEFAULT_BLOCK_LEN).
 
 signature_begin(_BlockLen) ->
     ?NIF_STUB.
