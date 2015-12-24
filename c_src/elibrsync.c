@@ -1,5 +1,4 @@
 #include <stdio.h>
-
 #include "erl_nif.h"
 #include "librsync.h"
 
@@ -26,7 +25,7 @@ static ERL_NIF_TERM  make_ret_term(ErlNifEnv* env, rs_result result) {
 static ERL_NIF_TERM iterate_rs_job(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ErlNifUInt64 job;
     ErlNifBinary src_bin, ret_bin;
-    int ret_size, eof_in;
+    int ret_size, eof_in, alloc_size = 512;
     rs_buffers_t buffers;
     rs_result result;
     ERL_NIF_TERM ret_term;
@@ -43,15 +42,22 @@ static ERL_NIF_TERM iterate_rs_job(ErlNifEnv* env, int argc, const ERL_NIF_TERM 
         return enif_make_badarg(env);
     }
 
-    enif_alloc_binary(1024 + src_bin.size, &ret_bin);
+    enif_alloc_binary(alloc_size, &ret_bin);
 
     buffers.next_in = (char*)src_bin.data;
     buffers.avail_in = src_bin.size;
     buffers.eof_in = eof_in;
     buffers.next_out = (char*)ret_bin.data;
-    buffers.avail_out = ret_bin.size;
+    buffers.avail_out = alloc_size;
 
     result = rs_job_iter((rs_job_t*)job, &buffers);
+
+    while(result == RS_BLOCKED && buffers.avail_out ==0) {
+        enif_realloc_binary(&ret_bin, ret_bin.size + alloc_size); 
+        buffers.next_out = (char*)ret_bin.data + ret_bin.size - alloc_size;
+        buffers.avail_out = alloc_size;
+        result = rs_job_iter((rs_job_t*)job, &buffers);
+    }
 
     if(eof_in != 0) {
         while(result == RS_BLOCKED) {
@@ -72,7 +78,18 @@ static ERL_NIF_TERM iterate_rs_job(ErlNifEnv* env, int argc, const ERL_NIF_TERM 
     return ret_term;
 }
 
+static ERL_NIF_TERM free_rs_job(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    ErlNifUInt64 job;
+    rs_result result;
 
+    if(!enif_get_uint64(env, argv[0], &job)){
+        return enif_make_badarg(env);
+    }
+
+    result = rs_job_free((rs_job_t*)job);  
+
+    return make_ret_term(env, result);
+}
 
 static ERL_NIF_TERM signature_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     char basis_file_name[1024], sig_file_name[1024];
@@ -142,7 +159,6 @@ static ERL_NIF_TERM delta_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[
     fclose(delta_file);
 
     return make_ret_term(env, result);
-
 }
 
 static ERL_NIF_TERM patch_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
@@ -195,16 +211,7 @@ static ERL_NIF_TERM signature_iterate_nif(ErlNifEnv* env, int argc, const ERL_NI
 }
 
 static ERL_NIF_TERM signature_end_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-    ErlNifUInt64 job;
-    rs_result result;
-
-    if(!enif_get_uint64(env, argv[0], &job)){
-        return enif_make_badarg(env);
-    }
-
-    result = rs_job_free((rs_job_t*)job);  
-
-    return make_ret_term(env, result);
+    return free_rs_job(env, argc, argv);
 }
 
 static ERL_NIF_TERM build_hash_table_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
@@ -235,6 +242,18 @@ static ERL_NIF_TERM build_hash_table_nif(ErlNifEnv* env, int argc, const ERL_NIF
     return enif_make_tuple2(env, atom_ok, enif_make_uint64(env, (ErlNifUInt64)signature));
 }
 
+static ERL_NIF_TERM free_hash_table_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    ErlNifUInt64 signature;
+
+    if(!enif_get_uint64(env, argv[0], &signature)){
+        return enif_make_badarg(env);
+    }
+
+    rs_free_sumset((rs_signature_t*)signature);
+
+    return enif_make_tuple2(env, atom_ok, atom_ok);
+}
+
 static ERL_NIF_TERM delta_begin_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
     ErlNifUInt64 signature;
 
@@ -252,16 +271,30 @@ static ERL_NIF_TERM delta_iterate_nif(ErlNifEnv* env, int argc, const ERL_NIF_TE
 }
 
 static ERL_NIF_TERM delta_end_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
-    ErlNifUInt64 job;
-    rs_result result;
+    return free_rs_job(env, argc, argv);
+}
 
-    if(!enif_get_uint64(env, argv[0], &job)){
+static ERL_NIF_TERM patch_begin_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    char basis_file_name[1024];
+    FILE *basis_file;
+
+    if(!enif_get_string(env, argv[0], basis_file_name, sizeof(basis_file_name), ERL_NIF_LATIN1)) {
         return enif_make_badarg(env);
     }
 
-    result = rs_job_free((rs_job_t*)job);  
+    basis_file = fopen(basis_file_name, "rb");
 
-    return make_ret_term(env, result);
+    rs_job_t *job = rs_patch_begin(rs_file_copy_cb, basis_file);
+
+    return enif_make_tuple2(env, atom_ok, enif_make_uint64(env, (ErlNifUInt64)job));
+}
+
+static ERL_NIF_TERM patch_iterate_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    return iterate_rs_job(env, argc, argv);
+}
+
+static ERL_NIF_TERM patch_end_nif(ErlNifEnv* env, int argc, const ERL_NIF_TERM argv[]) {
+    return free_rs_job(env, argc, argv);
 }
 
 static ErlNifFunc nif_funcs[] = {
@@ -272,9 +305,13 @@ static ErlNifFunc nif_funcs[] = {
     {"signature_iterate", 3, signature_iterate_nif},
     {"signature_end", 1, signature_end_nif},
     {"build_hash_table", 1, build_hash_table_nif},
+    {"free_hash_table", 1, free_hash_table_nif},
     {"delta_begin", 1, delta_begin_nif},
     {"delta_iterate", 3, delta_iterate_nif},
-    {"delta_end", 1, delta_end_nif}
+    {"delta_end", 1, delta_end_nif},
+    {"patch_begin", 1, patch_begin_nif},
+    {"patch_iterate", 3, patch_iterate_nif},
+    {"patch_end", 1, patch_end_nif}
 };
 
 static int on_load(ErlNifEnv* env, void** priv_data, ERL_NIF_TERM load_info)

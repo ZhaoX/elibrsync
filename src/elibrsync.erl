@@ -9,9 +9,14 @@
     signature_iterate/2,
     signature_end/2,
     build_hash_table/1,
+    free_hash_table/1,
     delta_begin/1,
     delta_iterate/2,
-    delta_end/2
+    delta_end/2,
+    patch_begin/1,
+    patch_iterate/2,
+    patch_end/2
+
 ]).
 
 -on_load(init/0).
@@ -66,6 +71,9 @@ signature_end(_Context) ->
 build_hash_table(_SignatureData) ->
     ?NIF_STUB.
 
+free_hash_table(_HashTable) ->
+    ?NIF_STUB.
+
 delta_begin(_HashTable) ->
     ?NIF_STUB.
 
@@ -81,4 +89,21 @@ delta_end(Context, Data) ->
     {ok, Ret}.
 
 delta_end(_Context) ->
+    ?NIF_STUB.
+
+patch_begin(_BasisFileName) ->
+    ?NIF_STUB.
+
+patch_iterate(Context, Data) ->
+    patch_iterate(Context, Data, 0).
+
+patch_iterate(_Context, _Data, _Eof) ->
+    ?NIF_STUB.
+
+patch_end(Context, Data) ->
+    {ok, Ret} = patch_iterate(Context, Data, 1),
+    {ok, _} = patch_end(Context),
+    {ok, Ret}.
+
+patch_end(_Context) ->
     ?NIF_STUB.
