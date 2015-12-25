@@ -1,6 +1,7 @@
 all:
+	./rebar get-deps
 	./rebar compile
-	mkdir -p .eunit && cp -r test/data .eunit/
+	mkdir .eunit && cp -r test/data .eunit/
 	./rebar eunit
 	rm -rf .eunit/data
 

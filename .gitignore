@@ -8,3 +8,4 @@ priv
 *.swp
 edoc-info
 stylesheet.css
+c_src/librsync/
