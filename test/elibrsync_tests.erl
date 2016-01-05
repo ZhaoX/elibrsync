@@ -31,7 +31,7 @@ run_delta(Job, _IoDevice, eof, Acc) ->
     {ok, <<Acc/binary, Ret/binary>>};
 run_delta(Job, IoDevice, {ok, Data}, Acc) ->
     {ok, Ret} = elibrsync:delta_iterate(Job, Data), 
-    run_signature(Job, IoDevice, file:read(IoDevice, 1024), <<Acc/binary, Ret/binary>>).
+    run_delta(Job, IoDevice, file:read(IoDevice, 1024), <<Acc/binary, Ret/binary>>).
 
 patch_test() ->
     {ok, Job} = elibrsync:patch_begin("data/file"),
@@ -45,4 +45,4 @@ run_patch(Job, _IoDevice, eof, Acc) ->
     {ok, <<Acc/binary, Ret/binary>>};
 run_patch(Job, IoDevice, {ok, Data}, Acc) ->
     {ok, Ret} = elibrsync:patch_iterate(Job, Data), 
-    run_signature(Job, IoDevice, file:read(IoDevice, 1024), <<Acc/binary, Ret/binary>>).
+    run_patch(Job, IoDevice, file:read(IoDevice, 1024), <<Acc/binary, Ret/binary>>).
