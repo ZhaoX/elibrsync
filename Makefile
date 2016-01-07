@@ -18,3 +18,6 @@ clean:
 
 xref: 
 	./rebar xref
+
+rm-deps:
+	./c_src/build_deps.sh rm-deps
